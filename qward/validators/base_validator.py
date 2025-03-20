@@ -3,12 +3,8 @@ from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as Sampler
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.visualization import plot_histogram
-from qiskit.providers import Backend
-import numpy as np
 import os
-import pandas as pd
-import matplotlib.pyplot as plt
-from typing import Dict, Any, List, Type
+from typing import List
 from dotenv import load_dotenv
 from ..analysis.analysis import Analysis
 
@@ -228,4 +224,27 @@ class BaseValidator(QuantumCircuit):
         Returns:
             matplotlib.figure.Figure: The circuit diagram
         """
-        return super().draw(output='mpl') 
+        return super().draw(output='mpl')
+    
+    def run_analysis(self):
+        """
+        Run analysis on all analyzers and return their results.
+        
+        Returns:
+            dict: Dictionary containing analysis results from each analyzer
+        """
+        analysis_results = {}
+        for i, analyzer in enumerate(self.analyzers):
+            analysis_results[f"analyzer_{i}"] = analyzer.analyze()
+        return analysis_results
+
+    def plot_analysis(self, ideal_rate: float = 0.5):
+        """
+        Generate plots for all analyzers.
+        
+        Args:
+            ideal_rate (float): The ideal success rate to mark on the plots
+        """
+        for i, analyzer in enumerate(self.analyzers):
+            print(f"\nPlotting analysis for analyzer {i}:")
+            analyzer.plot(ideal_rate=ideal_rate) 

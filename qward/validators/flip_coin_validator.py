@@ -16,9 +16,14 @@ class FlipCoinValidator(BaseValidator):
         """
         super().__init__(num_qubits=1, num_clbits=1, use_barriers=use_barriers, name="flip_coin")
         
-        # Add success rate analyzer
-        self.success_rate = SuccessRate()
-        self.add_analyzer(self.success_rate)
+        # Define success criteria: tails (1) is considered success
+        def success_criteria(state):
+            return state == '1'
+        
+        # Add success rate analyzer with the criteria
+        success_analyzer = SuccessRate()
+        success_analyzer.set_success_criteria(success_criteria)
+        self.add_analyzer(success_analyzer)
         
         # Build the circuit
         self._build_circuit()
@@ -54,9 +59,7 @@ class FlipCoinValidator(BaseValidator):
             shots_per_job=shots_per_job
         )
         
-        # Add success rate analysis
-        results["analysis"] = {
-            "success_rate": self.success_rate.analyze(target_value='1')
-        }
+        # Add analysis results
+        results["analysis"] = self.run_analysis()
         
         return results 

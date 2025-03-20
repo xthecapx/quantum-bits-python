@@ -30,7 +30,7 @@ results = validator.run_simulation(
 
 # Display analysis results for tails (1)
 print("\nAnalysis Results for Tails (1):")
-analysis = results["analysis"]["success_rate"]
+analysis = results["analysis"]["analyzer_0"]  # Get the first analyzer's results
 for key, value in analysis.items():
     if key == "average_counts":
         print(f"\nAverage counts per job:")
@@ -42,12 +42,12 @@ for key, value in analysis.items():
 # Cell 4 - Plot Results
 # Plot success rate distribution for tails
 print("\nPlotting success rate distribution for tails...")
-validator.success_rate.plot(target_value='1', ideal_rate=0.5)  # For a fair coin, we expect 50% tails
+validator.plot_analysis(ideal_rate=0.5)  # For a fair coin, we expect 50% tails
 
 # Cell 5 - Export Results
 # Export results to CSV
 print("\nExporting results...")
-validator.success_rate.export_results("flip_coin_results.csv")
+validator.analyzers[0].export_results("flip_coin_results.csv")
 
 # Cell 6 - Run on IBM Quantum Hardware
 print("\nRunning on IBM Quantum Hardware...")

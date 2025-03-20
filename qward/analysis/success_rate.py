@@ -60,11 +60,14 @@ class SuccessRate(Analysis):
         if self.results_df.empty:
             raise ValueError("No results available to analyze")
         
-        # Calculate success rate for the target value
+        # Calculate success rate for each job using the custom success criteria
         success_rates = []
         for counts in self.results_df['counts']:
             total_shots = sum(counts.values())
-            successful_shots = counts.get(target_value, 0)
+            successful_shots = 0
+            for state, count in counts.items():
+                if self.success_criteria(state):
+                    successful_shots += count
             success_rates.append(successful_shots / total_shots if total_shots > 0 else 0)
         
         # Calculate average counts
@@ -97,17 +100,20 @@ class SuccessRate(Analysis):
         if self.results_df.empty:
             raise ValueError("No results available to plot")
         
-        # Calculate success rates for the target value
+        # Calculate success rates using the custom success criteria
         success_rates = []
         for counts in self.results_df['counts']:
             total_shots = sum(counts.values())
-            successful_shots = counts.get(target_value, 0)
+            successful_shots = 0
+            for state, count in counts.items():
+                if self.success_criteria(state):
+                    successful_shots += count
             success_rates.append(successful_shots / total_shots if total_shots > 0 else 0)
         
         plt.figure(figsize=(10, 6))
         plt.hist(success_rates, bins=20, alpha=0.7)
         plt.axvline(x=ideal_rate, color='r', linestyle='--', label=f'Ideal Rate ({ideal_rate:.0%})')
-        plt.title(f'Distribution of Success Rates (Target: {target_value})')
+        plt.title('Distribution of Success Rates')
         plt.xlabel('Success Rate')
         plt.ylabel('Count')
         plt.legend()
