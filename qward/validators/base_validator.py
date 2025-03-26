@@ -86,6 +86,11 @@ class BaseValidator(QuantumCircuit):
         Returns:
             dict: Dictionary containing simulation results and circuit metrics
         """
+        # Start timing
+        import time
+        start_time = time.time()
+        start_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))
+        
         # Get first simulation results
         sim_results = self._simulate(shots=shots_per_job, show_histogram=show_histogram)
         
@@ -128,9 +133,26 @@ class BaseValidator(QuantumCircuit):
                     for k in set(sim_results["counts"]) | set(job_result["counts"])
                 }
         
+        # End timing
+        end_time = time.time()
+        end_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))
+        execution_time = end_time - start_time
+        
+        # Add timing information to results
+        timing_info = {
+            "start_time": start_timestamp,
+            "end_time": end_timestamp,
+            "execution_time": execution_time,
+            "num_jobs": num_jobs,
+            "shots_per_job": shots_per_job,
+            "total_shots": num_jobs * shots_per_job,
+            "shots_per_second": (num_jobs * shots_per_job) / execution_time if execution_time > 0 else 0
+        }
+        
         return {
             "results_metrics": sim_results,
-            "circuit_metrics": circuit_metrics
+            "circuit_metrics": circuit_metrics,
+            "timing_info": timing_info
         }
     
     def run_on_ibm(self, channel: str = None, token: str = None):
@@ -145,6 +167,11 @@ class BaseValidator(QuantumCircuit):
             dict: Dictionary containing execution results and job information
         """
         try:
+            # Start timing
+            import time
+            overall_start_time = time.time()
+            overall_start_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(overall_start_time))
+            
             # Use environment variables if no credentials are provided
             channel = channel or IBM_QUANTUM_CHANNEL
             token = token or IBM_QUANTUM_TOKEN
@@ -163,23 +190,43 @@ class BaseValidator(QuantumCircuit):
             print(f"Using backend: {backend.configuration().backend_name}")
             print(f"Pending jobs: {backend.status().pending_jobs}")
             
+            # Time the compilation and job submission
+            compile_start_time = time.time()
             pm = generate_preset_pass_manager(backend=backend, optimization_level=0)
             sampler = Sampler(backend)
             isa_circuit = pm.run(self)
             job = sampler.run([isa_circuit])
             job_id = job.job_id()
+            compile_end_time = time.time()
+            compile_time = compile_end_time - compile_start_time
+            
             print(f">>> Job ID: {job_id}")
             print(f">>> Job Status: {job.status()}")
+            print(f">>> Compilation time: {compile_time:.3f} seconds")
 
-            import time
-            start_time = time.time()
-            while time.time() - start_time < 600:  # 10 minutes timeout
+            # Time the job execution
+            execution_start_time = time.time()
+            execution_start_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(execution_start_time))
+            
+            timeout = 600  # 10 minutes timeout
+            polling_interval = 5  # Check status every 5 seconds
+            polling_count = 0
+            
+            while time.time() - execution_start_time < timeout:
                 status = job.status()
-                print(f">>> Job Status: {status}")
+                polling_count += 1
+                print(f">>> Job Status: {status} (Poll #{polling_count})")
                 
                 if status == 'DONE':
+                    execution_end_time = time.time()
+                    execution_end_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(execution_end_time))
+                    execution_time = execution_end_time - execution_start_time
+                    
                     result = job.result()
                     counts = result[0].data.c.get_counts()
+                    num_shots = sum(counts.values())
+                    
+                    print(f">>> Execution completed in {execution_time:.3f} seconds")
                     print(counts)
                     display(plot_histogram(counts))
                     
@@ -187,34 +234,93 @@ class BaseValidator(QuantumCircuit):
                     for analyzer in self.analyzers:
                         analyzer.add_results({"counts": counts})
                     
+                    # Calculate overall timing
+                    overall_end_time = time.time()
+                    overall_end_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(overall_end_time))
+                    overall_time = overall_end_time - overall_start_time
+                    
+                    # Create timing information
+                    timing_info = {
+                        "overall_start_time": overall_start_timestamp,
+                        "overall_end_time": overall_end_timestamp,
+                        "overall_time": overall_time,
+                        "compile_time": compile_time,
+                        "queue_time": execution_start_time - compile_end_time,
+                        "execution_time": execution_time,
+                        "execution_start_time": execution_start_timestamp,
+                        "execution_end_time": execution_end_timestamp,
+                        "polling_count": polling_count,
+                        "shots": num_shots,
+                        "shots_per_second": num_shots / execution_time if execution_time > 0 else 0
+                    }
+                    
                     return {
                         "status": "completed",
                         "job_id": job_id,
                         "counts": counts,
-                        "backend": backend.configuration().backend_name
+                        "backend": backend.configuration().backend_name,
+                        "timing_info": timing_info
                     }
                 elif status != 'RUNNING' and status != 'QUEUED':
+                    # Calculate timing even for errors
+                    execution_end_time = time.time()
+                    overall_end_time = time.time()
+                    
+                    timing_info = {
+                        "overall_start_time": overall_start_timestamp,
+                        "overall_end_time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(overall_end_time)),
+                        "overall_time": overall_end_time - overall_start_time,
+                        "compile_time": compile_time,
+                        "error_time": execution_end_time - execution_start_time,
+                        "polling_count": polling_count
+                    }
+                    
                     print(f"Job ended with status: {status}")
                     return {
                         "status": "error",
                         "job_id": job_id,
                         "error": f"Job ended with status: {status}",
-                        "backend": backend.configuration().backend_name
+                        "backend": backend.configuration().backend_name,
+                        "timing_info": timing_info
                     }
                 
-                time.sleep(5)
+                time.sleep(polling_interval)
 
+            # Handle timeout
+            overall_end_time = time.time()
+            timing_info = {
+                "overall_start_time": overall_start_timestamp,
+                "overall_end_time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(overall_end_time)),
+                "overall_time": overall_end_time - overall_start_time,
+                "compile_time": compile_time,
+                "timeout_after": timeout,
+                "polling_count": polling_count
+            }
+            
             print("Job timed out after 10 minutes")
             return {
                 "status": "pending",
                 "job_id": job_id,
-                "backend": backend.configuration().backend_name
+                "backend": backend.configuration().backend_name,
+                "timing_info": timing_info
             }
         except Exception as e:
+            # Calculate timing even for exceptions
+            overall_end_time = time.time()
+            overall_time = overall_end_time - overall_start_time
+            
+            timing_info = {
+                "overall_start_time": overall_start_timestamp,
+                "overall_end_time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(overall_end_time)),
+                "overall_time": overall_time,
+                "error_occurred_at": time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
             print(f"An error occurred: {e}")
             return {
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
+                "timing_info": timing_info
             }
     
     def draw(self):
